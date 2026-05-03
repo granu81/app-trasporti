@@ -5,23 +5,36 @@ from datetime import datetime
 import folium
 from streamlit_folium import folium_static
 from streamlit_geolocation import streamlit_geolocation
-from streamlit_autorefresh import st_autorefresh  # <-- NUOVO: Per aggiornamento automatico
 
 # Configurazione Pagina
 st.set_page_config(page_title="Gestione Flotta Live", layout="wide")
 
-# --- AGGIORNAMENTO AUTOMATICO ---
-# Se siamo nel ruolo Ufficio, la pagina si ricarica da sola ogni 10 secondi
-ruolo = st.sidebar.radio("Ruolo:", ["💻 Ufficio", "📱 Autista"])
-
-if ruolo == "💻 Ufficio":
-    st_autorefresh(interval=10 * 1000, key="datarefresh") # 10000ms = 10 secondi
-
 # Connessione a Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# IMPORTANTE: Mettiamo ttl=0 per forzare Streamlit a leggere i dati reali dal foglio ogni volta
-df = conn.read(ttl=0) 
+# Lettura dati (ttl=0 forza il caricamento dei dati nuovi ogni volta)
+df = conn.read(ttl=0)
+
+st.sidebar.title("Sistema Trasporti")
+ruolo = st.sidebar.radio("Ruolo:", ["💻 Ufficio", "📱 Autista"])
+
+# --- AGGIORNAMENTO AUTOMATICO NATIVO (Solo per Ufficio) ---
+if ruolo == "💻 Ufficio":
+    # Questo comando dice a Streamlit di ricaricare la pagina tra 10 secondi
+    # Non richiede installazioni esterne!
+    st.info(f"Monitor attivo - Prossimo aggiornamento automatico tra 10 secondi...")
+    st.empty() # Crea uno spazio vuoto per forzare il refresh
+    
+    # JavaScript per forzare il refresh della pagina ogni 10 secondi
+    st.components.v1.html(
+        """
+        <script>
+        window.parent.document.dispatchEvent(new CustomEvent("st_autorefresh", {detail: 10000}));
+        setTimeout(function(){ window.location.reload(); }, 10000);
+        </script>
+        """,
+        height=0,
+    )
 
 # --- LATO AUTISTA ---
 if ruolo == "📱 Autista":
@@ -33,10 +46,10 @@ if ruolo == "📱 Autista":
         lat_gps = location['latitude']
         lon_gps = location['longitude']
         
-        st.success(f"✅ Posizione acquisita correttamente")
+        st.success(f"✅ Posizione acquisita")
         
         if not df.empty and 'autista' in df.columns:
-            nome = st.selectbox("Seleziona il tuo nome:", df['autista'].unique())
+            nome = st.selectbox("Chi sei?", df['autista'].unique())
             
             c1, c2 = st.columns(2)
             
@@ -50,8 +63,7 @@ if ruolo == "📱 Autista":
                     updated_df.loc[mask, 'lon'] = lon_gps
                     
                     conn.update(data=updated_df)
-                    st.toast(f"Inviato: {stato}")
-                    st.success("Dati salvati! Puoi chiudere o cambiare stato.")
+                    st.success(f"Dati inviati! Stato attuale: {stato}")
                 except Exception as e:
                     st.error(f"Errore: {e}")
 
@@ -62,29 +74,29 @@ if ruolo == "📱 Autista":
                 if st.button("🔴 SEGNALA OCCUPATO", use_container_width=True):
                     salva_tutto("Occupato")
     else:
-        st.warning("⚠️ Clicca sul tasto GPS per trasmettere la posizione.")
+        st.warning("⚠️ Clicca sul tasto GPS sopra per trasmettere.")
 
 # --- LATO UFFICIO ---
 else:
-    st.header("Monitoraggio Flotta in Tempo Reale")
+    st.header(f"Monitoraggio Flotta - {datetime.now().strftime('%H:%M:%S')}")
     
-    # Pulizia dati
+    # Pulizia dati per la mappa
     df_clean = df.copy()
     df_clean['lat'] = pd.to_numeric(df_clean['lat'].astype(str).str.replace(",", "."), errors='coerce')
     df_clean['lon'] = pd.to_numeric(df_clean['lon'].astype(str).str.replace(",", "."), errors='coerce')
     
-    # Mostra l'ultimo aggiornamento generale per sicurezza
-    st.write(f"Ultimo aggiornamento monitor: {datetime.now().strftime('%H:%M:%S')}")
-    
     st.dataframe(df_clean, use_container_width=True)
 
     if not df_clean.dropna(subset=['lat', 'lon']).empty:
-        m = folium.Map(location=[df_clean['lat'].mean(), df_clean['lon'].mean()], zoom_start=6)
-        for _, row in df_clean.dropna(subset=['lat', 'lon']).iterrows():
-            color = "green" if str(row['stato']).lower() == "libero" else "red"
-            folium.Marker(
-                location=[row['lat'], row['lon']], 
-                popup=f"{row['autista']} - {row['stato']}",
-                icon=folium.Icon(color=color, icon="car", prefix="fa")
-            ).add_to(m)
-        folium_static(m, width=1100, height=500)
+        try:
+            m = folium.Map(location=[df_clean['lat'].mean(), df_clean['lon'].mean()], zoom_start=6)
+            for _, row in df_clean.dropna(subset=['lat', 'lon']).iterrows():
+                color = "green" if str(row['stato']).lower() == "libero" else "red"
+                folium.Marker(
+                    location=[row['lat'], row['lon']], 
+                    popup=f"{row['autista']} - {row['stato']}",
+                    icon=folium.Icon(color=color, icon="car", prefix="fa")
+                ).add_to(m)
+            folium_static(m, width=1100, height=500)
+        except:
+            st.error("Errore nel caricamento della mappa.")
