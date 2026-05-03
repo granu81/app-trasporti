@@ -3,7 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import folium
-from streamlit_folium import st_folium
+from streamlit_folium import folium_static  # Cambiato per maggiore stabilità
 
 # Configurazione Pagina
 st.set_page_config(page_title="Gestione Flotta Live", layout="wide")
@@ -42,34 +42,32 @@ if ruolo == "📱 Autista":
 else:
     st.header("Monitoraggio Flotta")
     
-    # Mostriamo la tabella per controllo
-    st.dataframe(df)
+    # Visualizzazione Tabella
+    st.dataframe(df, use_container_width=True)
 
     st.subheader("Mappa Geolocalizzazione")
 
     # PULIZIA DATI "BLINDATA" PER LA MAPPA
     if not df.empty:
-        # Creiamo una copia per non sporcare il dataframe originale
         df_mappa = df.copy()
         
-        # Trasformiamo lat e lon in numeri. Se c'è un errore (es. una virgola o testo), diventa NaN
+        # Trasformiamo lat e lon in numeri (gestisce punti/virgolette/vuoti)
         df_mappa['lat'] = pd.to_numeric(df_mappa['lat'], errors='coerce')
         df_mappa['lon'] = pd.to_numeric(df_mappa['lon'], errors='coerce')
         
-        # Eliminiamo tutte le righe che hanno NaN in lat o lon
+        # Eliminiamo righe senza coordinate
         df_mappa = df_mappa.dropna(subset=['lat', 'lon'])
 
         if not df_mappa.empty:
             try:
-                # Calcolo del centro mappa (media delle posizioni valide)
+                # Centro mappa
                 centro_lat = df_mappa['lat'].mean()
                 centro_lon = df_mappa['lon'].mean()
                 
-                # Creazione mappa
                 m = folium.Map(location=[centro_lat, centro_lon], zoom_start=6)
 
                 for index, row in df_mappa.iterrows():
-                    # Gestione colore dinamico
+                    # Colore dinamico
                     stato_testo = str(row['stato']).strip().lower()
                     colore = "green" if stato_testo == "libero" else "red"
                     
@@ -80,12 +78,12 @@ else:
                         icon=folium.Icon(color=colore, icon="car", prefix="fa")
                     ).add_to(m)
 
-                # Rendering mappa - returned_objects=[] evita ricaricamenti inutili
-                st_folium(m, width=1100, height=500, returned_objects=[])
+                # Rendering MAPPA STATICA (più veloce e affidabile su Streamlit Cloud)
+                folium_static(m, width=1100, height=500)
             
             except Exception as e:
                 st.error(f"Errore tecnico nella creazione della mappa: {e}")
         else:
-            st.warning("⚠️ Nessuna coordinata valida trovata nel foglio Google. Assicurati che le colonne 'lat' e 'lon' contengano numeri col PUNTO (es: 45.46).")
+            st.warning("⚠️ Nessuna coordinata valida trovata. Verifica che nel foglio lat/lon usino il PUNTO.")
     else:
-        st.info("Il foglio Google sembra vuoto. Aggiungi i dati degli autisti.")
+        st.info("Il foglio Google sembra vuoto o non accessibile.")
