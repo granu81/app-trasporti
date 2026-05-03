@@ -1,7 +1,1 @@
-streamlit
-pandas
-folium
-streamlit-folium
-st-gsheets-connection
-streamlit-geolocation
-st-autorefresh
+
