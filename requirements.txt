@@ -4,3 +4,4 @@ pandas
 folium
 streamlit-folium
 streamlit-geolocation
+st-autorefresh
