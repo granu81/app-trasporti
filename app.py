@@ -100,10 +100,16 @@ else:
         # Tabella Stilizzata
         st.subheader("Stato Mezzi")
         st.dataframe(
-            df.style.applymap(color_stato, subset=['stato']), 
+        try:
+            styled_df = df.style.map(color_stato, subset=['stato'])
+        except AttributeError:
+            styled_df = df.style.applymap(color_stato, subset=['stato'])
+            
+        st.dataframe(
+            styled_df, 
             use_container_width=True,
             hide_index=True
-        )
+        )    
 
         st.write("---")
         
