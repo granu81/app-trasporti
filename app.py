@@ -4,37 +4,40 @@ import pandas as pd
 from datetime import datetime
 import folium
 from streamlit_folium import folium_static
-from streamlit_geolocation import streamlit_geolocation # Cambiato componente
+from streamlit_geolocation import streamlit_geolocation
+from streamlit_autorefresh import st_autorefresh  # <-- NUOVO: Per aggiornamento automatico
 
 # Configurazione Pagina
 st.set_page_config(page_title="Gestione Flotta Live", layout="wide")
 
+# --- AGGIORNAMENTO AUTOMATICO ---
+# Se siamo nel ruolo Ufficio, la pagina si ricarica da sola ogni 10 secondi
+ruolo = st.sidebar.radio("Ruolo:", ["💻 Ufficio", "📱 Autista"])
+
+if ruolo == "💻 Ufficio":
+    st_autorefresh(interval=10 * 1000, key="datarefresh") # 10000ms = 10 secondi
+
 # Connessione a Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
-df = conn.read(ttl="5s")
 
-st.sidebar.title("Sistema Trasporti")
-ruolo = st.sidebar.radio("Ruolo:", ["💻 Ufficio", "📱 Autista"])
+# IMPORTANTE: Mettiamo ttl=0 per forzare Streamlit a leggere i dati reali dal foglio ogni volta
+df = conn.read(ttl=0) 
 
 # --- LATO AUTISTA ---
 if ruolo == "📱 Autista":
     st.header("📍 Aggiorna la tua posizione")
     
-    # Questo pulsante è nativo e molto più stabile
-    st.write("Clicca sul tasto sotto per attivare il GPS:")
     location = streamlit_geolocation()
     
-    # Se il sensore restituisce i dati
     if location and location.get('latitude'):
         lat_gps = location['latitude']
         lon_gps = location['longitude']
         
-        st.success(f"✅ Posizione bloccata: {lat_gps}, {lon_gps}")
+        st.success(f"✅ Posizione acquisita correttamente")
         
         if not df.empty and 'autista' in df.columns:
             nome = st.selectbox("Seleziona il tuo nome:", df['autista'].unique())
             
-            st.write("---")
             c1, c2 = st.columns(2)
             
             def salva_tutto(stato):
@@ -47,27 +50,31 @@ if ruolo == "📱 Autista":
                     updated_df.loc[mask, 'lon'] = lon_gps
                     
                     conn.update(data=updated_df)
-                    st.balloons()
-                    st.toast(f"Aggiornato con successo come {stato}!")
+                    st.toast(f"Inviato: {stato}")
+                    st.success("Dati salvati! Puoi chiudere o cambiare stato.")
                 except Exception as e:
-                    st.error(f"Errore di rete: {e}")
+                    st.error(f"Errore: {e}")
 
             with c1:
-                if st.button("🟢 SEGNALA COME LIBERO", use_container_width=True):
+                if st.button("🟢 SEGNALA LIBERO", use_container_width=True):
                     salva_tutto("Libero")
             with c2:
-                if st.button("🔴 SEGNALA COME OCCUPATO", use_container_width=True):
+                if st.button("🔴 SEGNALA OCCUPATO", use_container_width=True):
                     salva_tutto("Occupato")
     else:
-        st.warning("⚠️ Il GPS non è ancora attivo. Clicca sul simbolo della posizione sopra.")
+        st.warning("⚠️ Clicca sul tasto GPS per trasmettere la posizione.")
 
 # --- LATO UFFICIO ---
 else:
-    st.header("Monitoraggio Flotta")
-    # Pulizia dati per sicurezza prima della mappa
+    st.header("Monitoraggio Flotta in Tempo Reale")
+    
+    # Pulizia dati
     df_clean = df.copy()
     df_clean['lat'] = pd.to_numeric(df_clean['lat'].astype(str).str.replace(",", "."), errors='coerce')
     df_clean['lon'] = pd.to_numeric(df_clean['lon'].astype(str).str.replace(",", "."), errors='coerce')
+    
+    # Mostra l'ultimo aggiornamento generale per sicurezza
+    st.write(f"Ultimo aggiornamento monitor: {datetime.now().strftime('%H:%M:%S')}")
     
     st.dataframe(df_clean, use_container_width=True)
 
