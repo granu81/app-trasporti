@@ -97,12 +97,14 @@ else:
     df = get_data()
     
     if not df.empty:
-        # Tabella Stilizzata
+        # Tabella Stilizzata con gestione errore Pandas map/applymap
         st.subheader("Stato Mezzi")
-        st.dataframe(
+        
         try:
+            # Versione per Pandas nuovi
             styled_df = df.style.map(color_stato, subset=['stato'])
         except AttributeError:
+            # Versione per Pandas vecchi
             styled_df = df.style.applymap(color_stato, subset=['stato'])
             
         st.dataframe(
@@ -115,7 +117,7 @@ else:
         
         # Filtro per la mappa
         st.subheader("Mappa Geolocalizzazione")
-        filtro = st.multiselect("Filtra per stato:", ["Libero", "Occupato"], default=["Libero", "Occupato"])
+        filtro = st.multiselect("Filtra per stato sulla mappa:", ["Libero", "Occupato"], default=["Libero", "Occupato"])
         
         # Elaborazione dati per mappa
         df_mappa = df.copy()
